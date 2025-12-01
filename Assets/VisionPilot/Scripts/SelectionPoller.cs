@@ -7,20 +7,20 @@ using UnityEngine;
 public class SelectionPoller : MonoBehaviour
 {
     [Header("FastAPI")]
-    [Tooltip("GET endpoint that returns {\"x\": float, \"y\": float} in 0–1 range.")]
     public string serverUrl = "http://127.0.0.1:8000/selection";
     [Tooltip("Seconds between polls.")]
     public float pollInterval = 0.1f;
 
     [Header("Selection")]
-    [Tooltip("ObjectSelector on the camera that should perform the highlight.")]
     public ObjectSelector objectSelector;
+    public ARSegmentManager arSegmentManager;   // <- assign in Inspector
 
     private HttpClient _client;
     private bool _running;
 
     private float _lastX = -1f;
     private float _lastY = -1f;
+    private string _lastSegmentId = null;
 
     private float _nextErrorLogTime = 0f;
     private const float ERROR_LOG_COOLDOWN = 5f; // seconds
@@ -30,7 +30,8 @@ public class SelectionPoller : MonoBehaviour
     {
         public float x;
         public float y;
-        // Extra fields (source, ts, etc.) from the server are ignored by JsonUtility
+        public string source;
+        public string segment_id;
     }
 
     private void Awake()
@@ -56,10 +57,7 @@ public class SelectionPoller : MonoBehaviour
 
     private IEnumerator MainLoop()
     {
-        // 1) Health check
         yield return HealthCheckCoroutine();
-
-        // 2) Poll loop
         yield return PollLoopCoroutine();
     }
 
@@ -72,13 +70,9 @@ public class SelectionPoller : MonoBehaviour
             yield return null;
 
         if (t.Result.IsSuccessStatusCode)
-        {
             Debug.Log("[SelectionPoller] Selection server healthy.");
-        }
         else
-        {
             Debug.LogWarning("[SelectionPoller] Selection server NOT healthy: " + t.Result.StatusCode);
-        }
     }
 
     private IEnumerator PollLoopCoroutine()
@@ -106,19 +100,34 @@ public class SelectionPoller : MonoBehaviour
             if (data == null)
                 return;
 
-            // Clamp to [0,1] just in case
             float nx = Mathf.Clamp01(data.x);
             float ny = Mathf.Clamp01(data.y);
 
-            // Skip if nothing changed
-            if (Mathf.Approximately(nx, _lastX) &&
-                Mathf.Approximately(ny, _lastY))
+            // Update AR segment first
+            if (!string.IsNullOrEmpty(data.segment_id) && arSegmentManager != null)
+            {
+                arSegmentManager.SetSegment(data.segment_id);
+            }
+
+            // Dedup only if BOTH coords and segment are unchanged
+            bool sameCoords = Mathf.Approximately(nx, _lastX) &&
+                              Mathf.Approximately(ny, _lastY);
+            bool sameSegment = string.Equals(
+                data.segment_id ?? string.Empty,
+                _lastSegmentId ?? string.Empty,
+                StringComparison.Ordinal
+            );
+
+            if (sameCoords && sameSegment)
                 return;
 
             _lastX = nx;
             _lastY = ny;
+            _lastSegmentId = data.segment_id;
 
-            Debug.Log($"[SelectionPoller] Got selection x={nx:F3}, y={ny:F3}");
+            string src = string.IsNullOrEmpty(data.source) ? "unknown" : data.source;
+            string seg = string.IsNullOrEmpty(data.segment_id) ? "none" : data.segment_id;
+            Debug.Log($"[SelectionPoller] Got selection x={nx:F3}, y={ny:F3}, src={src}, segment={seg}");
 
             if (objectSelector != null)
             {
