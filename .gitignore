@@ -7,6 +7,15 @@
 [Ll]ogs/
 UserSettings/
 
+# Additional Unity/IDE artifacts
+Library/
+Temp/
+Logs/
+Build*/
+.vs/
+*.csproj
+*.sln
+
 # Visual Studio
 .vscode/
 *.csproj
