@@ -24,6 +24,7 @@ public class SelectionPoller : MonoBehaviour
 
     private float _nextErrorLogTime = 0f;
     private const float ERROR_LOG_COOLDOWN = 5f; // seconds
+    private bool _hadError = false;
 
     [Serializable]
     private class SelectionData
@@ -133,13 +134,17 @@ public class SelectionPoller : MonoBehaviour
             {
                 objectSelector.SelectAtNormalized(nx, ny);
             }
+
+            // Mark recovery from prior error if any
+            if (_hadError)
+                _hadError = false;
         }
         catch (Exception e)
         {
-            if (Time.time >= _nextErrorLogTime)
+            if (!_hadError)
             {
                 Debug.LogWarning($"[SelectionPoller] Poll error: {e.Message}");
-                _nextErrorLogTime = Time.time + ERROR_LOG_COOLDOWN;
+                _hadError = true;
             }
         }
     }
