@@ -34,3 +34,14 @@ Thumbs.db
 
 # Other
 ignore.conf
+
+# Python virtual envs and caches
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.env
+
+# Legacy folder (if present)
+VP_Brain/legacy/
