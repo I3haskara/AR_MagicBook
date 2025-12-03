@@ -12,12 +12,25 @@ public class ObjectSelector : MonoBehaviour
     private GameObject _current;
     private Material _originalMaterial;
 
+    private bool selectionEnabled = true;
+    private SelectableHighlight[] allHighlights;
+    private GameObject currentSelected;
+
     void Awake()
     {
         _cam = Camera.main;
         if (_cam == null)
         {
             Debug.LogError("[ObjectSelector] No Main Camera found.");
+        }
+    }
+
+    private void Start()
+    {
+        allHighlights = FindObjectsOfType<SelectableHighlight>();
+        foreach (var h in allHighlights)
+        {
+            h.SetDimmed();
         }
     }
 
@@ -62,6 +75,9 @@ public class ObjectSelector : MonoBehaviour
         }
 
         Debug.Log($"[ObjectSelector] Selected: {_current.name}");
+
+        currentSelected = _current;
+        UpdateHighlights(currentSelected);
     }
 
     public void ClearSelection()
@@ -81,12 +97,35 @@ public class ObjectSelector : MonoBehaviour
     // TEMP: Mouse test so you can verify logic without Python
     void Update()
     {
+        // Toggle selection mode with Tab
+        if (Input.GetKeyDown(KeyCode.Tab))
+        {
+            selectionEnabled = !selectionEnabled;
+            Debug.Log("[ObjectSelector] Selection " + (selectionEnabled ? "ENABLED" : "DISABLED"));
+        }
+
+        if (!selectionEnabled)
+            return;
+
         if (Input.GetMouseButtonDown(0))
         {
             Vector3 mouse = Input.mousePosition;
             float nx = mouse.x / Screen.width;
             float ny = mouse.y / Screen.height;
             SelectAtNormalized(nx, ny);
+        }
+    }
+
+    private void UpdateHighlights(GameObject selected)
+    {
+        foreach (var h in allHighlights)
+        {
+            if (h == null) continue;
+
+            if (h.gameObject == selected || h.transform.IsChildOf(selected.transform))
+                h.SetSelected();
+            else
+                h.SetDimmed();
         }
     }
 }
