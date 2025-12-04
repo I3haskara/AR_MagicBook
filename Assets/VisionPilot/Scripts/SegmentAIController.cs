@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -11,14 +12,6 @@ public class SegmentContextPayload
 }
 
 [System.Serializable]
-public class Effects
-{
-    public bool highlight;
-    public string emoji;
-    public bool hologram;
-}
-
-[System.Serializable]
 public class AIResponse
 {
     public string segment_group_id;
@@ -26,14 +19,19 @@ public class AIResponse
     public string action;
     public string message;
     public string emotion;
-    public Effects effects;
+    public Dictionary<string, bool> effects;
+    public string model_url;
 }
 
 public class SegmentAIController : MonoBehaviour
 {
+    [Header("Selection")]
+    [SerializeField] private ObjectSelector objectSelector;
+    [SerializeField] private HologramSpawner hologramSpawner;
+
     [Header("Backend Settings")]
     [SerializeField]
-    private string backendUrl = "http://127.0.0.1:8000/ai/segment";
+    private string baseUrl = "http://127.0.0.1:8000";
 
     [Header("Test Settings")]
     [SerializeField]
@@ -91,7 +89,10 @@ public class SegmentAIController : MonoBehaviour
     private IEnumerator SendSegmentContext(SegmentContextPayload payload)
     {
         string json = JsonUtility.ToJson(payload);
-        var request = new UnityWebRequest(backendUrl, "POST");
+        var url = $"{baseUrl}/ai/segment";
+        Debug.Log("[SegmentAIController] Calling: " + url);
+
+        var request = new UnityWebRequest(url, "POST");
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
 
         request.uploadHandler = new UploadHandlerRaw(bodyRaw);
@@ -127,18 +128,72 @@ public class SegmentAIController : MonoBehaviour
             " message=\"" + response.message + "\""
         );
 
-        if (response.effects != null)
-        {
-            Debug.Log(
-                "[SegmentAI] effects: highlight=" + response.effects.highlight +
-                " emoji=" + response.effects.emoji +
-                " hologram=" + response.effects.hologram
-            );
-        }
-
         if (aiMessageUI != null && !string.IsNullOrEmpty(response.message))
         {
-            aiMessageUI.ShowMessage(response.message, response.intent);
+            aiMessageUI.ShowMessage(response.message, response.emotion);
         }
+
+        if (response.effects != null && response.effects.TryGetValue("highlight", out var highlight) && highlight)
+        {
+            TryHighlightCurrentObject();
+        }
+
+        if (response.effects != null && response.effects.TryGetValue("hologram", out var hologram) && hologram)
+        {
+            TrySpawnHologram(response);
+        }
+    }
+
+    private void TryHighlightCurrentObject()
+    {
+        if (objectSelector == null)
+        {
+            Debug.LogWarning("[SegmentAIController] No ObjectSelector reference set.");
+            return;
+        }
+
+        var selected = objectSelector.CurrentSelectedObject;
+        if (selected == null)
+        {
+            Debug.LogWarning("[SegmentAIController] No current selected object to highlight.");
+            return;
+        }
+
+        var effect = selected.GetComponent<HighlightEffect>();
+        if (effect == null)
+        {
+            Debug.LogWarning($"[SegmentAIController] No HighlightEffect on {selected.name}.");
+            return;
+        }
+
+        effect.PlayHighlight();
+    }
+
+    private void TrySpawnHologram(AIResponse response)
+    {
+        if (hologramSpawner == null)
+        {
+            Debug.LogWarning("[SegmentAIController] No HologramSpawner assigned.");
+            return;
+        }
+
+        if (objectSelector == null)
+        {
+            Debug.LogWarning("[SegmentAIController] No ObjectSelector reference.");
+            return;
+        }
+
+        var selected = objectSelector.CurrentSelectedObject;
+        if (selected == null)
+        {
+            Debug.LogWarning("[SegmentAIController] No selected object to anchor hologram.");
+            return;
+        }
+
+        hologramSpawner.SpawnHologram(
+            selected.transform,
+            response.segment_group_id,
+            response.model_url
+        );
     }
 }

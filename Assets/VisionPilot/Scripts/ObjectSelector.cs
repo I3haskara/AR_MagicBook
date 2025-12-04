@@ -8,6 +8,8 @@ public class ObjectSelector : MonoBehaviour
     public LayerMask selectionMask;        // Which layers can be selected
     public Material highlightMaterial;     // Material to apply to the selected object
 
+    public GameObject CurrentSelectedObject { get; private set; }
+
     private Camera _cam;
     private GameObject _current;
     private Material _originalMaterial;
@@ -61,11 +63,15 @@ public class ObjectSelector : MonoBehaviour
 
     private void SetCurrent(GameObject go)
     {
-        if (_current == go) return;
+        var root = go.GetComponentInParent<HighlightEffect>();
+        var target = root != null ? root.gameObject : go;
+
+        if (_current == target) return;
 
         ClearSelection();
 
-        _current = go;
+        _current = target;
+        CurrentSelectedObject = target;
 
         var renderer = _current.GetComponent<Renderer>();
         if (renderer != null && highlightMaterial != null)
@@ -74,7 +80,7 @@ public class ObjectSelector : MonoBehaviour
             renderer.material = highlightMaterial;
         }
 
-        Debug.Log($"[ObjectSelector] Selected: {_current.name}");
+        Debug.Log($"[ObjectSelector] Selected: {CurrentSelectedObject.name}");
 
         currentSelected = _current;
         UpdateHighlights(currentSelected);
@@ -92,6 +98,7 @@ public class ObjectSelector : MonoBehaviour
 
         _current = null;
         _originalMaterial = null;
+        CurrentSelectedObject = null;
     }
 
     // TEMP: Mouse test so you can verify logic without Python
