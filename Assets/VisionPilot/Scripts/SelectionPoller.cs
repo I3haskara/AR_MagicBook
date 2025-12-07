@@ -37,11 +37,12 @@ public class SelectionPoller : MonoBehaviour
 
     private void Awake()
     {
-        _client = new HttpClient();
+        EnsureClient();
     }
 
     private void OnEnable()
     {
+        EnsureClient();
         _running = true;
         StartCoroutine(MainLoop());
     }
@@ -56,6 +57,14 @@ public class SelectionPoller : MonoBehaviour
         _client?.Dispose();
     }
 
+    private void EnsureClient()
+    {
+        if (_client == null)
+        {
+            _client = new HttpClient();
+        }
+    }
+
     private IEnumerator MainLoop()
     {
         yield return HealthCheckCoroutine();
@@ -66,14 +75,28 @@ public class SelectionPoller : MonoBehaviour
     {
         string healthUrl = serverUrl.Replace("/selection", "/health");
 
+        EnsureClient();
+
         Task<HttpResponseMessage> t = _client.GetAsync(healthUrl);
         while (!t.IsCompleted)
             yield return null;
 
-        if (t.Result.IsSuccessStatusCode)
+        if (t.Exception != null)
+        {
+            Debug.LogWarning("[SelectionPoller] Health check error: " + t.Exception.Message);
+        }
+        else if (t.Result != null && t.Result.IsSuccessStatusCode)
+        {
             Debug.Log("[SelectionPoller] Selection server healthy.");
-        else
+        }
+        else if (t.Result != null)
+        {
             Debug.LogWarning("[SelectionPoller] Selection server NOT healthy: " + t.Result.StatusCode);
+        }
+        else
+        {
+            Debug.LogWarning("[SelectionPoller] Health check returned no result.");
+        }
     }
 
     private IEnumerator PollLoopCoroutine()
@@ -92,6 +115,7 @@ public class SelectionPoller : MonoBehaviour
     {
         try
         {
+            EnsureClient();
             var resp = await _client.GetAsync(serverUrl);
             if (!resp.IsSuccessStatusCode)
                 return;

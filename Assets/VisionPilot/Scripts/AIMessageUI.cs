@@ -32,20 +32,28 @@ public class AIMessageUI : MonoBehaviour
         }
     }
 
-    public void ShowMessage(string message, string intent)
+    public void ShowMessage(string userText, string aiText, string intent = null)
     {
         if (messageText == null) return;
 
-        Debug.Log("[AIMessageUI] ShowMessage: " + message);
+        // Backend marker for STT failure / empty audio
+        if (!string.IsNullOrEmpty(userText) &&
+            userText.Contains("STT error or empty audio"))
+        {
+            messageText.text = "I couldn’t hear you. Tap and try again.";
+            timer = autoClearSeconds;
+            return;
+        }
 
-        if (!string.IsNullOrEmpty(intent))
+        string textToShow = aiText;
+        if (!string.IsNullOrEmpty(intent) && !string.IsNullOrEmpty(aiText))
         {
-            messageText.text = $"[{intent}] {message}";
+            textToShow = $"[{intent}] {aiText}";
         }
-        else
-        {
-            messageText.text = message;
-        }
+
+        messageText.text = textToShow;
+
+        Debug.Log("[AIMessageUI] ShowMessage: " + textToShow);
 
         timer = autoClearSeconds;
     }

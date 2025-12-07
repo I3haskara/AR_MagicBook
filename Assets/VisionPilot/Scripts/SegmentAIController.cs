@@ -1,8 +1,12 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using TMPro;
 using UnityEngine;
-using UnityEngine.Networking;
 
 [System.Serializable]
 public class SegmentContextPayload
@@ -41,6 +45,22 @@ public class SegmentAIController : MonoBehaviour
 
     [Header("UI")]
     [SerializeField] private AIMessageUI aiMessageUI;
+    [SerializeField] private TextMeshProUGUI aiStatusText;
+
+    [Header("Timeouts")]
+    [SerializeField] private float aiRequestTimeoutSeconds = 20f;
+
+    private HttpClient _httpClient;
+
+    private void Awake()
+    {
+        _httpClient = new HttpClient();
+    }
+
+    private void OnDestroy()
+    {
+        _httpClient?.Dispose();
+    }
 
     // TEMP: press T in Play mode to fire a test call
     private void Update()
@@ -55,7 +75,7 @@ public class SegmentAIController : MonoBehaviour
         {
             if (aiMessageUI != null)
             {
-                aiMessageUI.ShowMessage("Manual UI test message.", "debug");
+                aiMessageUI.ShowMessage(null, "Manual UI test message.", "debug");
             }
             else
             {
@@ -66,16 +86,24 @@ public class SegmentAIController : MonoBehaviour
 
     public void SendTestRequest()
     {
-        var payload = new SegmentContextPayload
-        {
-            segment_group_id = testSegmentId,
-            label = testLabel
-        };
-
-        StartCoroutine(SendSegmentContext(payload));
+        StartCoroutine(CallAISegmentCoroutine(testSegmentId, testLabel));
     }
 
     public void RequestAIForSegment(string segmentGroupId, string label = "")
+    {
+        StartCoroutine(CallAISegmentCoroutine(segmentGroupId, label));
+    }
+
+    private IEnumerator CallAISegmentCoroutine(string segmentGroupId, string label = "")
+    {
+        var task = CallAISegmentAsync(segmentGroupId, label);
+        while (!task.IsCompleted)
+        {
+            yield return null;
+        }
+    }
+
+    public async Task CallAISegmentAsync(string segmentGroupId, string label = "")
     {
         var payload = new SegmentContextPayload
         {
@@ -83,35 +111,50 @@ public class SegmentAIController : MonoBehaviour
             label = label
         };
 
-        StartCoroutine(SendSegmentContext(payload));
-    }
-
-    private IEnumerator SendSegmentContext(SegmentContextPayload payload)
-    {
         string json = JsonUtility.ToJson(payload);
         var url = $"{baseUrl}/ai/segment";
-        Debug.Log("[SegmentAIController] Calling: " + url);
 
-        var request = new UnityWebRequest(url, "POST");
-        byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
-
-        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-        request.downloadHandler = new DownloadHandlerBuffer();
-        request.SetRequestHeader("Content-Type", "application/json");
-
-        yield return request.SendWebRequest();
-
-        if (request.result != UnityWebRequest.Result.Success)
+        if (aiStatusText != null)
         {
-            Debug.LogError("[SegmentAI] Request failed: " + request.error);
-            yield break;
+            aiStatusText.text = "Processing...";
         }
 
-        string jsonResponse = request.downloadHandler.text;
-        Debug.Log("[SegmentAI] Raw response: " + jsonResponse);
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(aiRequestTimeoutSeconds));
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(url, content, cts.Token);
 
-        var aiResponse = JsonUtility.FromJson<AIResponse>(jsonResponse);
-        HandleAIResponse(aiResponse);
+            response.EnsureSuccessStatusCode();
+
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+            Debug.Log("[SegmentAI] Raw response: " + jsonResponse);
+
+            var aiResponse = JsonUtility.FromJson<AIResponse>(jsonResponse);
+
+            if (aiStatusText != null)
+            {
+                aiStatusText.text = "";
+            }
+
+            HandleAIResponse(aiResponse);
+        }
+        catch (TaskCanceledException ex)
+        {
+            Debug.LogWarning($"[SegmentAI] Request cancelled or timed out: {ex.Message}");
+            if (aiStatusText != null)
+            {
+                aiStatusText.text = "AI timed out. Try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[SegmentAI] Error calling AI: {ex}");
+            if (aiStatusText != null)
+            {
+                aiStatusText.text = "AI error. Check server.";
+            }
+        }
     }
 
     private void HandleAIResponse(AIResponse response)
@@ -130,7 +173,7 @@ public class SegmentAIController : MonoBehaviour
 
         if (aiMessageUI != null && !string.IsNullOrEmpty(response.message))
         {
-            aiMessageUI.ShowMessage(response.message, response.emotion);
+            aiMessageUI.ShowMessage(null, response.message, response.emotion);
         }
 
         if (response.effects != null && response.effects.TryGetValue("highlight", out var highlight) && highlight)
