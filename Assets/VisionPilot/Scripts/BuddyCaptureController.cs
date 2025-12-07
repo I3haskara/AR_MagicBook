@@ -259,7 +259,6 @@ public class BuddyCaptureController : MonoBehaviour
             var buddy = await spawner.SpawnFromUrlAsync(
                 glbUrl,
                 buddyName,
-                voiceIdOverride: null,
                 buddyId: null
             );
 

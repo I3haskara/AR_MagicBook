@@ -5,10 +5,9 @@ public class BuddyManager : MonoBehaviour
     public static BuddyManager Instance { get; private set; }
 
     [Header("Spawn Settings")]
-    public Transform playerCamera;        // assign Main Camera or XR camera
+    public Transform playerCamera;
     public float spawnDistance = 1.2f;
-    public Vector3 spawnOffset = new Vector3(0, -0.2f, 0); // slight down from eye level
-    public string defaultVoiceId = "YOUR_DEFAULT_ELEVENLABS_VOICE_ID";
+    public Vector3 spawnOffset = new Vector3(0, -0.2f, 0);
 
     [Header("Runtime")]
     public GameObject activeBuddy;

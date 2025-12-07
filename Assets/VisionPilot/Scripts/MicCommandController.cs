@@ -17,6 +17,7 @@ public class MicCommandController : MonoBehaviour, IPointerDownHandler, IPointer
     // Hook this into your existing systems:
     public AIMessageUI aiMessageUI;   // drag in inspector if you want HUD update
     public BuddyConversationController conversationController; // optional: handles bubble + TTS
+    public BuddyVoicePlayer buddyVoicePlayer; // The buddy that will speak the response
 
     private enum MicState { Idle, Listening, Processing }
     private MicState state = MicState.Idle;
@@ -185,8 +186,19 @@ public class MicCommandController : MonoBehaviour, IPointerDownHandler, IPointer
     IEnumerator SendAudioToServer(byte[] wavData)
     {
         Debug.Log($"[MicCommandController] Sending {wavData.Length} bytes to: {voiceCommandUrl}");
+        
+        // Verify audio data
+        if (wavData == null || wavData.Length == 0)
+        {
+            Debug.LogError("[MicCommandController] WAV data is null or empty!");
+            SetState(MicState.Idle);
+            yield break;
+        }
+        
         WWWForm form = new WWWForm();
-        form.AddBinaryData("audio", wavData, "voice.wav", "audio/wav");
+        form.AddBinaryData("audio_file", wavData, "voice.wav", "audio/wav");
+        
+        Debug.Log("[MicCommandController] Form created with field 'audio_file', filename 'voice.wav', content-type 'audio/wav'");
 
         using (UnityWebRequest www = UnityWebRequest.Post(voiceCommandUrl, form))
         {
@@ -196,6 +208,13 @@ public class MicCommandController : MonoBehaviour, IPointerDownHandler, IPointer
             {
                 Debug.LogError($"[MicCommandController] Voice command error: {www.error}");
                 Debug.LogError($"[MicCommandController] Response code: {www.responseCode}");
+                
+                // Log the actual error response from backend
+                if (!string.IsNullOrEmpty(www.downloadHandler.text))
+                {
+                    Debug.LogError($"[MicCommandController] Backend error response: {www.downloadHandler.text}");
+                }
+                
                 if (statusLabel) statusLabel.text = "Error. Tap to retry.";
                 SetState(MicState.Idle);
             }
@@ -206,18 +225,38 @@ public class MicCommandController : MonoBehaviour, IPointerDownHandler, IPointer
 
                 VoiceAIResponse resp = JsonUtility.FromJson<VoiceAIResponse>(json);
 
-                // Update HUD + TTS if wired
-                if (conversationController != null && resp != null && !string.IsNullOrEmpty(resp.ai_text))
+                if (resp != null && resp.success)
                 {
-                    StartCoroutine(conversationController.HandleAiReply(resp.ai_text, resp.action));
-                }
-                else if (aiMessageUI != null && resp != null && !string.IsNullOrEmpty(resp.ai_text))
-                {
-                    aiMessageUI.ShowMessage(resp.user_text, resp.ai_text, resp.action);
-                }
+                    Debug.Log($"[MicCommandController] Transcript: '{resp.transcript}'");
+                    Debug.Log($"[MicCommandController] Reply: '{resp.reply_text}'");
+                    
+                    // Show AI message in UI
+                    if (aiMessageUI != null && !string.IsNullOrEmpty(resp.reply_text))
+                    {
+                        aiMessageUI.ShowMessage(resp.transcript, resp.reply_text, "voice");
+                    }
 
-                // Later: hook resp.effects + resp.model_url into your hologram / highlight system
-                // Later: if resp.voice_b64 != null -> decode and play audio
+                    // Play voice response from audio_url
+                    if (!string.IsNullOrEmpty(resp.audio_url))
+                    {
+                        string fullAudioUrl = $"http://127.0.0.1:8000{resp.audio_url}";
+                        Debug.Log($"[MicCommandController] Playing audio from: {fullAudioUrl}");
+                        
+                        if (buddyVoicePlayer != null)
+                        {
+                            buddyVoicePlayer.PlayFromUrl(fullAudioUrl);
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning("[MicCommandController] No audio_url in response!");
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"[MicCommandController] Request failed or invalid response. Success: {resp?.success}");
+                    if (statusLabel) statusLabel.text = "Failed. Tap to retry.";
+                }
 
                 SetState(MicState.Idle);
             }
@@ -227,19 +266,10 @@ public class MicCommandController : MonoBehaviour, IPointerDownHandler, IPointer
     [Serializable]
     public class VoiceAIResponse
     {
-        public string user_text;
-        public string ai_text;
-        public string action;
-        public Effects effects;
-        public string model_url;
-        public string voice_b64;
-    }
-
-    [Serializable]
-    public class Effects
-    {
-        public bool highlight;
-        public bool hologram;
+        public bool success;
+        public string transcript;
+        public string reply_text;
+        public string audio_url;
     }
 }
 

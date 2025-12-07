@@ -27,7 +27,6 @@ public class BuddySpawner : MonoBehaviour
     public async Task<GameObject> SpawnFromUrlAsync(
         string glbUrl,
         string buddyName,
-        string voiceIdOverride = null,
         string buddyId = null)
     {
         if (string.IsNullOrEmpty(glbUrl))
@@ -64,13 +63,12 @@ public class BuddySpawner : MonoBehaviour
             bm.SetActiveBuddy(buddyRoot);
         }
 
-        // 5) Identity data
+        // Identity data
         var identity = buddyRoot.AddComponent<BuddyIdentity>();
         identity.Init(
             buddyId ?? System.Guid.NewGuid().ToString(),
             finalName,
-            defaultPersonality,
-            voiceIdOverride ?? (bm != null ? bm.defaultVoiceId : null)
+            defaultPersonality
         );
 
         // 6) AudioSource for voice

@@ -12,7 +12,6 @@ public class TTSResponse
 public class TTSRequest
 {
     public string text;
-    public string voice_id;
     public string buddy_id;
 }
 
@@ -45,14 +44,10 @@ public class BuddyConversationController : MonoBehaviour
         }
 
         var identity = buddy.GetComponent<BuddyIdentity>();
-        var voiceId = identity != null && !string.IsNullOrEmpty(identity.voiceId)
-            ? identity.voiceId
-            : (BuddyManager.Instance != null ? BuddyManager.Instance.defaultVoiceId : null);
 
         var payload = new TTSRequest
         {
             text = text,
-            voice_id = voiceId,
             buddy_id = identity != null ? identity.buddyId : null
         };
 
